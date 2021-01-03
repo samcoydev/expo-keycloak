@@ -1,63 +1,87 @@
-[![npm](https://img.shields.io/npm/v/expo-login-keycloak.svg?maxAge=2592000)](https://www.npmjs.com/package/expo-keycloak-login)
+[![npm](https://img.shields.io/npm/v/expo-keycloak.svg?maxAge=2592000)](https://www.npmjs.com/package/expo-keycloak)
 
+# Keycloak for Expo
 
-# TypeScript + Expo + Keycloak
+> Keycloak authentication for react-native apps using Expo.
 
-This package is based on [react-native-login-keycloak](https://github.com/mahomahoxd/react-native-login-keycloak).
+This package enables you to login against a keycloak instance from your Expo app without the need to eject!
 
-It lets you login against a keycloak instance from an expo app.
+This package also automatically handles refreshing of the token. (You can disable this behavior in `KeycloakProvider` props)
 
 ## Install
-``` 
-npm install expo-login-keycloak
+
+#### 1. Expo & React peer deps
+
+Expo and React should already be in your project, but just in case, let's make it clear you need those. Better yet, Expo should be in version 40 or above.
+
+#### 2. Expo modules
+
+To ensure maximum compatibility, we will install these separately:
+
+```
+expo install expo-random expo-auth-session
+```
+
+#### 3. Other peer deps and the star of the evening `expo-keycloak` itself
+
+```
+yarn add @react-native-async-storage/async-storage expo-keycloak
 ```
 
 ## Usage
 
-```typescript
-// App.tsx example
+```typescript jsx
+// App.tsx
+import {
+  IKeycloakConfiguration,
+  KeycloakProvider,
+  useKeycloak,
+} from 'expo-keycloak';
+import AppConfig from './app.json'; // This is Expo's app json where your scheme should be defined
 
-import { ... }
-import { API_URL, API_WS, AUTH_APP, clientId ,realm } from "./config";
-import { ExpoKeyckloakLogin, defaultTokenStorage } from 'expo-login-keycloak';
+export default () => {
+  const keycloakConfiguration: IKeycloakConfiguration = {
+    clientId: 'AGENT_007',
+    realm: 'REALM_OF_HER_MAJESTY',
+    url: 'http://WHERE_THE_KC_RESIDES', // This is usually an url ending with /auth
+    scheme: AppConfig.expo.scheme,
+  };
 
+  return (
+    <KeycloakProvider {...keycloakConfiguration}>
+      <Auth />
+    </KeycloakProvider>
+  );
+};
+```
 
-let token: string = null;
+```typescript jsx
+// Auth.tsx
+import { ActivityIndicator, Button, Text } from 'react-native';
 
-export default class App extends React.Component<Props, States>{
+export const Auth = () => {
+  const {
+    ready, // If the discovery is already fetched
+    login, // The login function - opens the browser
+    isLoggedIn, // Helper boolean to use e.g. in your components down the tree
+    token, // Access token, if available
+    logout, // Logs the user out
+  } = useKeycloak();
+  if (!ready) return <ActivityIndicator />;
 
-  private loadResourcesAsync = async () => {
+  if (!isLoggedIn)
+    return (
+      <View style={{ margin: 24 }}>
+        <Button onPress={login} title={'Login'} />
+      </View>
+    );
 
-    await Promise.all([
-      Asset.loadAsync([
-       // require('./YOURICON'),
-      ],
-      ),
-      this.login()
-    ]);
-  }
-
-  private async login() {
-    let login = new ExpoKeyckloakLogin({
-      clientId: clientId,
-      realm: realm,
-      url: AUTH_APP
-    })
-
-    let tokens = await login.login()
-    await defaultTokenStorage.saveTokens(tokens)
-    token = tokens.access_token
-    console.log("****token******")
-    await defaultTokenStorage.showUser()
-  }
-  {
-  ...
-  }
-
-  //render example
-
-  public render() {
-  ....
-  }
-}
+  return (
+    <View style={{ margin: 24 }}>
+      <Text style={{ fontSize: 17, marginBottom: 24 }}>Logged in!</Text>
+      <Text>Token: {token.slice(0, 24)}...</Text>
+      <Button onPress={logout} title={'Logout'} style={{ marginTop: 24 }} />
+    </View>
+  );
+};
 ```
