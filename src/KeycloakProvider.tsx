@@ -1,14 +1,16 @@
 import React, { FC, useCallback, useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import {
   TokenResponse,
   useAuthRequest,
   useAutoDiscovery,
 } from 'expo-auth-session';
+import { AuthRequestConfig } from 'expo-auth-session/src/AuthRequest.types';
+
 import { getRealmURL } from './getRealmURL';
 import { KeycloakContext } from './KeycloakContext';
 import useAsyncStorage from './useAsyncStorage';
-import { AuthRequestConfig } from 'expo-auth-session/src/AuthRequest.types';
 import { handleTokenExchange } from './handleTokenExchange';
 import {
   NATIVE_REDIRECT_PATH,
@@ -17,6 +19,7 @@ import {
 } from './const';
 
 export interface IKeycloakConfiguration extends Partial<AuthRequestConfig> {
+  usePKCE?: boolean;
   clientId: string;
   disableAutoRefresh?: boolean;
   nativeRedirectPath?: string;
@@ -27,12 +30,22 @@ export interface IKeycloakConfiguration extends Partial<AuthRequestConfig> {
   url: string;
 }
 
-export const KeycloakProvider: FC<IKeycloakConfiguration> = (props) => {
+export const KeycloakProvider: FC<IKeycloakConfiguration> = ({
+  usePKCE = false,
+  ...props
+}) => {
+  const useProxy = Platform.select({ web: false, native: !props.scheme });
+
+  const [refreshHandle, setRefreshHandle] = useState<any>(null);
+
   const discovery = useAutoDiscovery(getRealmURL(props));
   const redirectUri = AuthSession.makeRedirectUri({
-    native: `${props.scheme ?? 'exp'}://${props.nativeRedirectPath ?? NATIVE_REDIRECT_PATH}`,
-    useProxy: !props.scheme,
+    native: `${props.scheme ?? 'exp'}://${
+      props.nativeRedirectPath ?? NATIVE_REDIRECT_PATH
+    }`,
+    useProxy,
   });
+
   const [
     savedTokens,
     saveTokens,
@@ -41,12 +54,13 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = (props) => {
     props.tokenStorageKey ?? TOKEN_STORAGE_KEY,
     null,
   );
+
   const config: AuthRequestConfig = { redirectUri, ...props };
+
   const [request, response, promptAsync] = useAuthRequest(
-    { usePKCE: false, ...config },
+    { usePKCE, ...config },
     discovery,
   );
-  const [refreshHandle, setRefreshHandle] = useState<any>(null);
 
   const updateState = useCallback(
     (callbackValue: any) => {
@@ -75,6 +89,7 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = (props) => {
     },
     [saveTokens, refreshHandle, setRefreshHandle],
   );
+
   const handleTokenRefresh = useCallback(() => {
     if (!hydrated) return;
     if (!savedTokens && hydrated) {
@@ -84,8 +99,8 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = (props) => {
     if (TokenResponse.isTokenFresh(savedTokens!)) {
       updateState({ tokens: savedTokens });
     }
-    if (!discovery)
-      throw new Error('KC Not Initialized. - Discovery not ready.');
+    // if (!discovery)
+    //   throw new Error('KC Not Initialized. - Discovery not ready.');
     AuthSession.refreshAsync(
       { refreshToken: savedTokens!.refreshToken, ...config },
       discovery!,
@@ -93,10 +108,12 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = (props) => {
       .catch(updateState)
       .then(updateState);
   }, [discovery, hydrated, savedTokens, updateState]);
+
   const handleLogin = useCallback(async () => {
     clearTimeout(refreshHandle);
-    return promptAsync();
+    return promptAsync({ useProxy });
   }, [promptAsync, refreshHandle]);
+
   const handleLogout = useCallback(
     async (everywhere?: boolean) => {
       if (!savedTokens) throw new Error('Not logged in.');
@@ -119,7 +136,9 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = (props) => {
   }, [hydrated]);
 
   useEffect(() => {
-    handleTokenExchange({ response, discovery, config }).then(updateState);
+    handleTokenExchange({ response, discovery, config, request, usePKCE }).then(
+      updateState,
+    );
   }, [response]);
 
   return (
