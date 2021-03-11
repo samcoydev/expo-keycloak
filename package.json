@@ -1,5 +1,5 @@
 {
-  "name": "expo-keycloak",
+  "name": "@kettlespace-eng/expo-keycloak",
   "version": "1.0.19",
   "description": "Keycloak authentication for react-native apps using Expo.",
   "main": "dist/index.js",
@@ -12,7 +12,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/balgamat/expo-keycloak.git"
+    "url": "https://github.com/kettlespace-eng/expo-keycloak.git"
   },
   "keywords": [
     "auth",
