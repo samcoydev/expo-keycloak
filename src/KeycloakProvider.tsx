@@ -124,7 +124,7 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = ({
         ).catch((e) => console.error(e));
         saveTokens(null);
       } else {
-        if (Platform.OS === 'web') {
+        if (Platform.OS !== 'android') {
           AuthSession.dismiss();
         }
 
