@@ -1,19 +1,20 @@
-import * as AuthSession from 'expo-auth-session';
 import {
+  AccessTokenRequestConfig,
+  AuthRequest,
   AuthRequestConfig,
   AuthSessionResult,
   DiscoveryDocument,
-  TokenResponse,
-  AuthRequest,
-  AccessTokenRequestConfig,
-} from 'expo-auth-session';
+  // TokenResponse,
+  exchangeCodeAsync,
+} from 'expo-auth-session'
+import { TokenType } from './storage/tokenStorage'
 
 export interface IHandleTokenExchange {
-  response: AuthSessionResult | null;
-  request: AuthRequest | null;
-  discovery: DiscoveryDocument | null;
-  config: AuthRequestConfig;
-  usePKCE: boolean;
+  response: AuthSessionResult | null
+  request: AuthRequest | null
+  discovery: DiscoveryDocument | null
+  config: AuthRequestConfig
+  usePKCE: boolean
 }
 
 export const handleTokenExchange = async ({
@@ -22,32 +23,29 @@ export const handleTokenExchange = async ({
   discovery,
   config,
   usePKCE,
-}: IHandleTokenExchange): Promise<{ tokens: TokenResponse } | null> => {
+}: IHandleTokenExchange): Promise<TokenType | null> => {
   try {
     if (response?.type === 'success' && !!discovery?.tokenEndpoint) {
       const accessTokenConfig: AccessTokenRequestConfig = {
         code: response.params.code,
         ...config,
-      };
+      }
 
       if (usePKCE && !!request?.codeVerifier)
         accessTokenConfig.extraParams = {
           code_verifier: request.codeVerifier,
-        };
+        }
 
-      const tokens = await AuthSession.exchangeCodeAsync(
-        accessTokenConfig,
-        discovery,
-      );
-      return { tokens };
+      const tokens = await exchangeCodeAsync(accessTokenConfig, discovery)
+      return tokens as TokenType
     }
 
     if (response?.type === 'error') {
-      return null;
+      return null
     }
 
-    return null;
+    return null
   } catch {
-    return null;
+    return null
   }
-};
+}

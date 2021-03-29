@@ -1,22 +1,16 @@
-import React, { FC, useCallback, useEffect, useState } from 'react';
+import React, { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
-import {
-  TokenResponse,
-  useAuthRequest,
-  useAutoDiscovery,
-} from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+
 import { AuthRequestConfig } from 'expo-auth-session/src/AuthRequest.types';
 
 import { getRealmURL } from './getRealmURL';
 import { KeycloakContext } from './KeycloakContext';
-import useAsyncStorage from './useAsyncStorage';
+import useTokenStorage from './useTokenStorage';
 import { handleTokenExchange } from './handleTokenExchange';
-import {
-  NATIVE_REDIRECT_PATH,
-  REFRESH_TIME_BUFFER,
-  TOKEN_STORAGE_KEY,
-} from './const';
+import { NATIVE_REDIRECT_PATH, REFRESH_TIME_BUFFER } from './const';
+import { TokenType } from './storage/tokenStorage';
 
 export interface IKeycloakConfiguration extends Partial<AuthRequestConfig> {
   usePKCE?: boolean;
@@ -35,10 +29,18 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = ({
   ...props
 }) => {
   const useProxy = Platform.select({ web: false, native: !props.scheme });
+  const refreshHandle = useRef(0);
 
-  const [refreshHandle, setRefreshHandle] = useState<any>(null);
+  const [session, setSession] = useState({ loading: true, exists: false });
+  const {
+    tokens,
+    hydrated,
+    getTokens,
+    removeTokens,
+    setTokens,
+  } = useTokenStorage();
 
-  const discovery = useAutoDiscovery(getRealmURL(props));
+  const discovery = AuthSession.useAutoDiscovery(getRealmURL(props));
   const redirectUri = AuthSession.makeRedirectUri({
     native: `${props.scheme ?? 'exp'}://${
       props.nativeRedirectPath ?? NATIVE_REDIRECT_PATH
@@ -46,112 +48,162 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = ({
     useProxy,
   });
 
-  const [
-    savedTokens,
-    saveTokens,
-    hydrated,
-  ] = useAsyncStorage<TokenResponse | null>(
-    props.tokenStorageKey ?? TOKEN_STORAGE_KEY,
-    null,
-  );
-
   const config: AuthRequestConfig = { redirectUri, ...props };
 
-  const [request, response, promptAsync] = useAuthRequest(
+  const [request, response, promptAsync] = AuthSession.useAuthRequest(
     { usePKCE, ...config },
     discovery,
   );
 
-  const updateState = useCallback(
-    (callbackValue: any) => {
-      const tokens = callbackValue?.tokens ?? null;
-      if (!!tokens) {
-        saveTokens(tokens);
-        if (
-          !props.disableAutoRefresh &&
-          !!(tokens as TokenResponse).expiresIn
-        ) {
-          clearTimeout(refreshHandle);
-          setRefreshHandle(
-            setTimeout(
-              handleTokenRefresh,
-              ((tokens as TokenResponse).expiresIn! -
-                (props.refreshTimeBuffer ?? REFRESH_TIME_BUFFER)) *
-                1000,
-            ),
-          );
-        }
-      } else {
-        saveTokens(null);
-        clearTimeout(refreshHandle);
-        setRefreshHandle(null);
-      }
-    },
-    [saveTokens, refreshHandle, setRefreshHandle],
-  );
+  const updateState = useCallback(async (_tokens?: TokenType) => {
+    if (_tokens?.accessToken) {
+      await setTokens(_tokens);
+      if (!props.disableAutoRefresh && !!_tokens.expiresIn) {
+        clearTimeout(refreshHandle.current);
 
-  const handleTokenRefresh = useCallback(() => {
-    if (!hydrated) return;
-    if (!savedTokens && hydrated) {
-      updateState(null);
-      return;
+        refreshHandle.current = setTimeout(
+          handleTokenRefresh,
+          (_tokens.expiresIn! -
+            (props.refreshTimeBuffer ?? REFRESH_TIME_BUFFER)) *
+            1000,
+        ) as any;
+      }
+    } else {
+      await removeTokens();
+      clearTimeout(refreshHandle.current);
+      refreshHandle.current = 0;
     }
-    if (TokenResponse.isTokenFresh(savedTokens!)) {
-      updateState({ tokens: savedTokens });
+  }, []);
+
+  const handleTokenRefresh = useCallback(async () => {
+    try {
+      if (!hydrated) return;
+
+      const _tokens = await getTokens();
+      if (!_tokens.accessToken && hydrated) {
+        await updateState();
+        return;
+      }
+      if (
+        AuthSession.TokenResponse.isTokenFresh({
+          issuedAt: _tokens.issuedAt,
+          expiresIn: _tokens.expiresIn,
+        })
+      ) {
+        await updateState(_tokens);
+      }
+      // if (!discovery)
+      //   throw new Error('KC Not Initialized. - Discovery not ready.');
+      const _response = await AuthSession.refreshAsync(
+        { refreshToken: _tokens.refreshToken, ...config },
+        discovery!,
+      );
+      await updateState(_response as TokenType);
+    } catch (error) {
+      console.log(error);
     }
-    // if (!discovery)
-    //   throw new Error('KC Not Initialized. - Discovery not ready.');
-    AuthSession.refreshAsync(
-      { refreshToken: savedTokens!.refreshToken, ...config },
-      discovery!,
-    )
-      .catch(updateState)
-      .then(updateState);
-  }, [discovery, hydrated, savedTokens, updateState]);
+  }, [discovery, hydrated]);
 
   const handleLogin = useCallback(async () => {
-    clearTimeout(refreshHandle);
+    clearTimeout(refreshHandle.current);
+
     return promptAsync({ useProxy });
-  }, [promptAsync, refreshHandle]);
+  }, [promptAsync]);
 
-  const handleLogout = useCallback(
-    async (everywhere?: boolean) => {
-      if (!savedTokens) throw new Error('Not logged in.');
-      if (everywhere) {
-        AuthSession.revokeAsync(
-          { token: savedTokens?.accessToken!, ...config },
-          discovery!,
-        ).catch((e) => console.error(e));
-        saveTokens(null);
-      } else {
-        if (Platform.OS !== 'android') {
-          AuthSession.dismiss();
-        }
+  const handleLogout = useCallback(async () => {
+    try {
+      const _tokens = await getTokens();
 
-        saveTokens(null);
-      }
-    },
-    [discovery, savedTokens],
-  );
+      if (!_tokens.accessToken) throw new Error('Not logged in.');
+      await AuthSession.revokeAsync(
+        {
+          token: _tokens.accessToken,
+          ...config,
+        },
+        { revocationEndpoint: discovery?.revocationEndpoint },
+      );
+
+      const redirectUrl = AuthSession.makeRedirectUri({ useProxy: false });
+
+      await WebBrowser.openAuthSessionAsync(
+        `${discovery?.endSessionEndpoint}?redirect_uri=${redirectUrl}`,
+        redirectUrl,
+      );
+
+      await removeTokens();
+      setSession((prev) => ({ ...prev, exists: false }));
+    } catch (error) {
+      console.log(error);
+    }
+  }, [discovery]);
 
   useEffect(() => {
     if (hydrated) handleTokenRefresh();
   }, [hydrated]);
 
+  const fetchTokenExchange = async () => {
+    try {
+      const _tokens = await handleTokenExchange({
+        response,
+        discovery,
+        config,
+        request,
+        usePKCE,
+      });
+      if (_tokens) {
+        await updateState(_tokens);
+        setSession((prev) => ({ ...prev, exists: true }));
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
   useEffect(() => {
-    handleTokenExchange({ response, discovery, config, request, usePKCE }).then(
-      updateState,
-    );
+    if (response?.type === 'success') {
+      fetchTokenExchange();
+    }
   }, [response]);
+
+  const checkTokens = async () => {
+    try {
+      const { accessToken } = await getTokens();
+      if (accessToken) {
+        await loadUserInfo();
+
+        setSession({ loading: false, exists: true });
+        return;
+      }
+      setSession({ loading: false, exists: false });
+    } catch (error) {
+      console.log(error);
+      setSession({ loading: false, exists: false });
+    }
+  };
+
+  useEffect(() => {
+    checkTokens();
+  }, []);
+
+  const loadUserInfo = useCallback(async () => {
+    const { accessToken } = await getTokens();
+    const { userInfoEndpoint } = await AuthSession.fetchDiscoveryAsync(
+      getRealmURL(props),
+    );
+    return AuthSession.fetchUserInfoAsync(
+      { accessToken },
+      { userInfoEndpoint },
+    );
+  }, []);
 
   return (
     <KeycloakContext.Provider
       value={{
-        isLoggedIn: !props.disableAutoRefresh && !!savedTokens,
+        isLoggedIn: session.exists,
         login: handleLogin,
         logout: handleLogout,
-        ready: request !== null,
-        tokens: savedTokens,
+        ready: request !== null && session.loading === false,
+        tokens,
+        loadUserInfo,
       }}
     >
       {props.children}
