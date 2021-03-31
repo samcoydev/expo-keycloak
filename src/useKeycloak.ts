@@ -19,8 +19,9 @@ export const useKeycloak = () => {
         const { realm_access: { roles = [] } = {} } = jwt_decode(
           tokens.accessToken,
         );
-        roles.includes(role);
+        return roles.includes(role);
       }
+      return false;
     },
     [tokens.accessToken],
   );
@@ -35,7 +36,7 @@ export const useKeycloak = () => {
     login,
     logout,
     ready,
-    accessToken: tokens?.accessToken ?? null,
+    accessToken: tokens && tokens.accessToken ? tokens.accessToken : '',
     accessTokenParsed,
     hasRealmRole,
     loadUserInfo,
