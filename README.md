@@ -85,3 +85,10 @@ export const Auth = () => {
   );
 };
 ```
+
+## Publish package
+
+```
+yarn build
+npm publish
+```
