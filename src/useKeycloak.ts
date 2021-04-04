@@ -15,7 +15,7 @@ export const useKeycloak = () => {
 
   const hasRealmRole = useCallback(
     (role: string) => {
-      if (tokens.accessToken) {
+      if (tokens && tokens.accessToken) {
         const { realm_access: { roles = [] } = {} } = jwt_decode(
           tokens.accessToken,
         );
@@ -23,12 +23,12 @@ export const useKeycloak = () => {
       }
       return false;
     },
-    [tokens.accessToken],
+    [tokens],
   );
 
   const accessTokenParsed = useMemo(
-    () => (tokens.accessToken ? jwt_decode(tokens.accessToken) : {}),
-    [tokens.accessToken],
+    () => (tokens && tokens.accessToken ? jwt_decode(tokens.accessToken) : {}),
+    [tokens],
   );
 
   return {
