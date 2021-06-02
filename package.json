@@ -1,14 +1,14 @@
 {
   "name": "@kettlespace-eng/expo-keycloak",
-  "version": "1.0.30",
+  "version": "1.0.31",
   "description": "Keycloak authentication for react-native apps using Expo.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc --project .",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "prepublish": "npm-auto-version",
-    "postpublish": "git push origin --tags"
+    "xxxprepublish": "npm-auto-version",
+    "xxxpostpublish": "git push origin --tags"
   },
   "repository": {
     "type": "git",
@@ -23,7 +23,7 @@
     "openid",
     "react native"
   ],
-  "author": "Matěj Balga <matej.balga@icloud.com>",
+  "author": "devcauldron <jeff@kettlespace.com>",
   "license": "MIT",
   "devDependencies": {
     "@react-native-async-storage/async-storage": "^1.13.2",
