@@ -92,8 +92,8 @@ export const KeycloakProvider: FC<IKeycloakConfiguration> = ({
       ) {
         await updateState(_tokens);
       }
-      // if (!discovery)
-      //   throw new Error('KC Not Initialized. - Discovery not ready.');
+      if (!discovery)
+        return;
       const _response = await AuthSession.refreshAsync(
         { refreshToken: _tokens.refreshToken, ...config },
         discovery!,
