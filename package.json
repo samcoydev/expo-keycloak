@@ -1,5 +1,5 @@
 {
-  "name": "@kettlespace-eng/expo-keycloak",
+  "name": "@samcoydev/expo-keycloak",
   "version": "1.0.34",
   "description": "Keycloak authentication for react-native apps using Expo.",
   "main": "dist/index.js",
@@ -12,7 +12,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/kettlespace-eng/expo-keycloak.git"
+    "url": "https://github.com/samcoydev/expo-keycloak.git"
   },
   "keywords": [
     "auth",
@@ -23,7 +23,7 @@
     "openid",
     "react native"
   ],
-  "author": "devcauldron <jeff@kettlespace.com>",
+  "author": "samcoydev <sam@samcodesthings.com>",
   "license": "MIT",
   "devDependencies": {
     "@react-native-async-storage/async-storage": "^1.13.2",
